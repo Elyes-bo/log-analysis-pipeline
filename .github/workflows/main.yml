@@ -7,6 +7,11 @@ on:
 jobs:
   test:
     runs-on: ubuntu-latest
+    env:
+      DB_HOST: dummy-host
+      DB_USER: dummy-user
+      DB_PASSWORD: dummy-password
+      DB_NAME: dummy-db
     steps:
     - uses: actions/checkout@v3
     - name: Set up Python
