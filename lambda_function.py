@@ -105,7 +105,7 @@ def lambda_handler(event, context):
                     'Content-Type': 'application/json',
                     'Access-Control-Allow-Origin': '*'  # For CORS support
                 },
-                'body': json.dumps(response_data, ensure_ascii=False)
+                'body': response_data  # Don't use json.dumps here
             }
     
     except Exception as e:
