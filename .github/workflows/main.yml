@@ -61,4 +61,4 @@ jobs:
         zip -g lambda_deployment.zip lambda_function.py
     - name: Update Lambda function
       run: |
-        aws lambda update-function-code --function-name log-analysis-api --zip-file fileb://lambda_deployment.zip
+        aws lambda update-function-code --function-name log-api --zip-file fileb://lambda_deployment.zip
