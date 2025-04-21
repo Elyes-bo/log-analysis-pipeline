@@ -1,7 +1,6 @@
 import json
 import pymysql
 import os
-import datetime
 
 # Database configuration
 DB_HOST = os.environ['DB_HOST']
@@ -25,17 +24,13 @@ def connect_to_db():
 
 def lambda_handler(event, context):
     # Get the interval parameter (hourly, daily, weekly)
-    query_params = event.get('queryStringParameters', {})
-    interval = query_params.get('interval', 'daily') if query_params else 'daily'
+    interval = event.get('queryStringParameters', {}).get('interval', 'daily')
     
     # Connect to the database
     conn = connect_to_db()
     if not conn:
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json'
-            },
             'body': json.dumps({'error': 'Failed to connect to database'})
         }
     
@@ -78,44 +73,29 @@ def lambda_handler(event, context):
                 if interval == 'hourly':
                     formatted_results.append({
                         'interval': row[0],
-                        'count': int(row[1])  # Ensure count is an integer
+                        'count': row[1]
                     })
                 elif interval == 'weekly':
                     formatted_results.append({
                         'week': row[0],
                         'week_start': row[1],
-                        'count': int(row[2])  # Ensure count is an integer
+                        'count': row[2]
                     })
                 else:  # daily
                     formatted_results.append({
                         'date': row[0],
-                        'count': int(row[1])  # Ensure count is an integer
+                        'count': row[1]
                     })
             
-            # Create response object
-            response_data = {
-                'interval_type': interval,
-                'results': formatted_results
-            }
-            
-            # Return results with proper JSON format
-            return {
-                'statusCode': 200,
-                'headers': {
-                    'Content-Type': 'application/json',
-                    'Access-Control-Allow-Origin': '*'  # For CORS support
-                },
-                'body': response_data  # Don't use json.dumps here
-            }
+            # Return results
+            return interval, formatted_results
+
     
     except Exception as e:
         print(f"Error executing query: {e}")
         return {
             'statusCode': 500,
-            'headers': {
-                'Content-Type': 'application/json'
-            },
-            'body': json.dumps({'error': str(e)})
+            'body': json.dumps({'error': f'Error executing query: {str(e)}'})
         }
     
     finally:

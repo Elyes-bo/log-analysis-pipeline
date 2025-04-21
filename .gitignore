@@ -1,0 +1,16 @@
+# Terraform files
+iac/.terraform/
+iac/.terraform.lock.hcl
+iac/*.tfstate
+iac/*.tfstate.*
+iac/terraform.tfvars
+iac/*.tfvars.json
+
+# Zip files
+*.zip
+
+# IDE and editor files
+.idea/
+.vscode/
+*.swp
+*.swo

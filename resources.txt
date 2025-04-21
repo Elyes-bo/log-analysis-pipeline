@@ -1,0 +1,77 @@
+AWS Resources Created by Terraform Configuration
+=============================================
+
+S3 Resources:
+------------
+- Bucket: log-analysis-data-bucket
+- Bucket Ownership Controls: log-analysis-data-bucket
+- Bucket ACL: log-analysis-data-bucket (private)
+- Lifecycle Configuration: log-analysis-data-bucket (30-day expiration)
+
+RDS Resources:
+-------------
+- DB Instance: logs-db
+  * Instance Class: db.t3.micro (compatible with MySQL 8.0)
+  * Engine: MySQL 8.0
+  * Database Name: logs_database
+  * Publicly Accessible: Yes
+  * Storage: 20 GB gp2
+  * Backup Retention: 0 days (minimized)
+  * Multi-AZ: No (single AZ)
+  * Encryption: Disabled
+- DB Subnet Group: logs-db-subnet-group
+- Security Group: rds_security_group
+
+Secrets Manager:
+--------------
+- Secret: rds/logs-db-credentials
+- Secret Version: Contains DB credentials
+
+Glue Resources:
+-------------
+- Database: logs_catalog
+- Table: logs_table
+  * Schema:
+    - datetime (timestamp)
+    - geography (string)
+    - method (string)
+    - client_ip (string)
+    - url_request (string)
+- Connection: rds-mysql-connection
+- Job: logs_etl_job
+  * Worker Type: G.1X
+  * Max Capacity: 1 (minimized)
+  * Timeout: 10 minutes
+  * Retries: 0
+- Security Group: glue_security_group
+- IAM Role: glue_etl_role
+- IAM Policy: glue_access_policy
+
+Lambda Resources:
+---------------
+- Function: logs_api_function
+  * Runtime: Python 3.9
+  * Handler: lambda_function.lambda_handler
+  * Memory: 128 MB (minimum)
+  * Timeout: 10 seconds
+  * Functionality: Query log counts by hour/day/week
+- Security Group: lambda_security_group
+- IAM Role: logs_lambda_role
+- IAM Policy: lambda_access_policy
+
+API Gateway Resources:
+-------------------
+- REST API: logs_analysis_api
+- Resource: /logs
+- Method: GET
+- Integration: Lambda integration
+- Deployment: prod stage
+- API Key: logs_api_key
+- Usage Plan: logs_usage_plan
+
+VPC Resources (Using Default VPC):
+--------------------------------
+- Using Default VPC
+- Using Public Subnets from Default VPC
+
+Note: All resources are created in eu-central-1 region 
