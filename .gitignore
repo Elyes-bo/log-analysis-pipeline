@@ -5,7 +5,8 @@ iac/*.tfstate
 iac/*.tfstate.*
 iac/terraform.tfvars
 iac/*.tfvars.json
-
+local
+/local
 # Zip files
 *.zip
 

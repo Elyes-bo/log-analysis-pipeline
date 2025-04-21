@@ -22,15 +22,13 @@ def test_lambda_handler_daily(mock_db_connection):
     with patch('lambda_function.connect_to_db', return_value=mock_conn):
         # Execute
         event = {'queryStringParameters': {'interval': 'daily'}}
-        result = lambda_function.lambda_handler(event, {})
+        interval, results = lambda_function.lambda_handler(event, {})
         
         # Assert
-        assert result['statusCode'] == 200
-        body = json.loads(result['body'])
-        assert body['interval_type'] == 'daily'
-        assert len(body['results']) == 2
-        assert body['results'][0]['date'] == '2023-01-01'
-        assert body['results'][0]['count'] == 100
+        assert interval == 'daily'
+        assert len(results) == 2
+        assert results[0]['date'] == '2023-01-01'
+        assert results[0]['count'] == 100
 
 def test_lambda_handler_hourly(mock_db_connection):
     # Setup
@@ -40,15 +38,13 @@ def test_lambda_handler_hourly(mock_db_connection):
     with patch('lambda_function.connect_to_db', return_value=mock_conn):
         # Execute
         event = {'queryStringParameters': {'interval': 'hourly'}}
-        result = lambda_function.lambda_handler(event, {})
+        interval, results = lambda_function.lambda_handler(event, {})
         
         # Assert
-        assert result['statusCode'] == 200
-        body = json.loads(result['body'])
-        assert body['interval_type'] == 'hourly'
-        assert len(body['results']) == 2
-        assert body['results'][0]['interval'] == '2023-01-01 01:00:00'
-        assert body['results'][0]['count'] == 50
+        assert interval == 'hourly'
+        assert len(results) == 2
+        assert results[0]['interval'] == '2023-01-01 01:00:00'
+        assert results[0]['count'] == 50
 
 def test_lambda_handler_db_error():
     # Setup
