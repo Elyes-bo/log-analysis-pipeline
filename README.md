@@ -1,120 +1,271 @@
 # Log Analysis Pipeline
 
-This project implements a data pipeline for analyzing log data using AWS services. The pipeline includes data ingestion, storage, processing, and serving layers.
+Hi team! I've just finished implementing our DNS log analysis project. This README will guide you through setting up and testing the solution I've built.
 
-## Architecture
+## What This Does
 
-The architecture consists of the following components:
+Collects DNS log files, processes them, stores the data in MySQL, enriches it with geolocation data, and provides an API to query the results. Here's what I've built:
 
-1. **Data Storage**:
-   - S3 bucket for storing raw log data
-   - RDS MySQL database for structured data storage
+- Storage for DNS logs in S3
+- ETL processing with AWS Glue
+- Data storage in RDS MySQL (credentials managed in AWS Secrets Manager)
+- Geolocation enrichment with Lambda
+- API access through API Gateway
+- Everything deployed with Terraform
+- CI/CD pipeline with GitHub Actions
+- Automated deployment package creation for Lambda functions
 
-2. **Data Processing**:
-   - AWS Glue for ETL operations
-   - Extracts data from S3 and loads it into RDS
+## Getting Started
 
-3. **Data Serving**:
-   - Lambda function for querying log data
-   - API Gateway for exposing the Lambda function
-   - API Key authentication for secure access
+### Prerequisites
 
-## Prerequisites
+- AWS CLI configured with proper access
+- Terraform installed (I used v1.5.0)
+- Python 3.9
+- Git
+- PowerBi
 
-- AWS Account with appropriate permissions
-- Terraform installed
-- Python 3.9+ for Lambda function
-- PowerShell for building Lambda package
+### Setup Instructions
 
-## Setup Instructions
-
-1. **Configure AWS Credentials**:
+1. **Clone the repo**
    ```
-   aws configure
+   git clone url
+   cd log-analysis-pipeline
    ```
 
-2. **Initialize Terraform**:
+2. **Set up AWS credentials**
+   
+   You'll need to set these environment variables, & actions secrets:
    ```
+   export AWS_ACCESS_KEY_ID=your_access_key
+   export AWS_SECRET_ACCESS_KEY=your_secret_key
+   export AWS_REGION=eu-central-1
+   ```
+
+3. **Deploy the infrastructure**
+   ```
+   cd iac
    terraform init
-   ```
-
-3. **Create terraform.tfvars**:
-   Create a file named `terraform.tfvars` with the following content:
-   ```
-   db_username = "admin"
-   db_password = "xAGl_rsd-24"
-   ```
-
-4. **Build Lambda Package**:
-   ```
-   .\build_lambda.ps1
-   ```
-
-5. **Apply Terraform Configuration**:
-   ```
    terraform apply
    ```
 
-6. **Upload Log Data**:
-   Upload your log data to the S3 bucket created by Terraform.
+4. **Get RDS credentials from Secrets Manager**
+   
+   The RDS credentials are stored in AWS Secrets Manager. You can retrieve them using:
+   ```
+   aws secretsmanager get-secret-value --secret-id rds/logs-db-credentials
+   ```
 
-7. **Run Glue ETL Job**:
-   Run the Glue ETL job to process the log data.
+5. **Connect to the database**
+   ```
+   mysql -h logs-db.czcooiosc04i.eu-central-1.rds.amazonaws.com -u admin -p logs_database
+   ```
 
-## API Usage
+6. **Create the required table**
+   ```sql
+   CREATE TABLE logs (
+       id INT NOT NULL AUTO_INCREMENT,
+       datetime DATETIME DEFAULT NULL,
+       geography VARCHAR(255) DEFAULT NULL,
+       method VARCHAR(10) DEFAULT NULL,
+       client_ip VARCHAR(45) DEFAULT NULL,
+       url_request TEXT DEFAULT NULL,
+       latitude DOUBLE DEFAULT NULL,
+       longitude DOUBLE DEFAULT NULL,
+       PRIMARY KEY (id),
+       KEY idx_datetime (datetime),
+       KEY idx_geography (geography),
+       KEY idx_method (method),
+       KEY idx_client_ip (client_ip)
+   );
+   ```
 
-The API provides endpoints to query log data by time period (hourly, daily, or weekly).
+7. **Launch the Glue job**
+   The Glue job will automatically trigger the geo-enhancement Lambda upon completion.
 
-### Endpoint
+8. **Get the API key**
+   
+   After deployment completes, Terraform will output the API endpoint and API key. Save these for later.
+   ```
+   terraform output api_key
+   terraform output api_endpoint
+   ```
 
+9. **Test the API**
+   
+   Try calling the API with the key:
+   ```
+   curl -H "x-api-key: YOUR_API_KEY" https://your-api-endpoint/prod/logs?interval=daily
+   ```
+
+## How to Test
+
+Run the automated tests:
 ```
-GET /logs
+cd tests
+pip install -r requirements.txt
+pytest
 ```
 
-### Request Body
+## How It Works
 
-```json
-{
-  "time_unit": "daily"  // Options: "hourly", "daily", "weekly"
-}
-```
+### Data Flow
 
-### Response
+1. DNS logs are uploaded to S3 bucket
+2. Glue job parses the logs and loads them into MySQL
+3. After Glue job completes, EventBridge triggers the geo-enrichment Lambda
+4. Lambda adds geolocation data to the logs
+5. API Gateway + Lambda provide query access to the processed data
 
-```json
-{
-  "time_unit": "daily",
-  "results": [
-    {
-      "time_period": "2023-01-01",
-      "count": 150
-    },
-    {
-      "time_period": "2023-01-02",
-      "count": 200
-    }
-  ]
-}
-```
+### File Structure
 
-### Authentication
+- `iac/main.tf` - Terraform infrastructure definition
+- `iac/gluetl.py` - ETL script for processing logs
+- `iac/lambda_function.py` - API endpoint Lambda
+- `iac/geo_data_enhancement.py` - Geo enrichment Lambda
+- `.github/workflows/main.yml` - CI/CD pipeline
+- `tests/` - Test suite for the application
 
-The API requires an API key for authentication. Include the API key in the `x-api-key` header.
 
-## Resources
+### logs
+- Lambda function logs: CloudWatch Logs under /aws/lambda/logs-api-function
+- Glue job logs: CloudWatch Logs under /aws-glue/jobs
+- API Gateway logs: CloudWatch Logs under API-Gateway-Execution-Logs
+- RDS performance insights: Available in RDS console
+- Secrets Manager audit logs: CloudTrail
 
-See `resources.txt` for a complete list of AWS resources created by this project.
+### CI CD
 
-## Cost Optimization
+The project uses GitHub Actions for continuous integration and deployment. The workflow is defined in `.github/workflows/main.yml` and is automatically triggered when code is pushed to the main branch.
 
-This project is designed to minimize costs:
-- RDS uses t3.micro instance (free tier eligible)
-- Lambda uses minimum memory (128MB)
-- Glue uses minimum capacity (1)
-- S3 has lifecycle rules to delete old data
-- RDS has backup retention set to 0
+#### What the Workflow Does
 
-## License
+1. **Test Phase**
+   - Runs on Ubuntu latest
+   - Sets up Python 3.9 environment
+   - Installs project dependencies from requirements.txt
+   - Runs pytest suite with mock database credentials
+   - Must pass before deployment can proceed
 
-MIT
+2. **Deploy Phase**
+   - Runs only after successful tests
+   - Sets up Python 3.9 environment
+   - Installs dependencies including AWS CLI
+   - Configures AWS credentials from GitHub Secrets
+   - Updates Lambda function code with new deployment package
 
+#### How to Launch the Workflow
+
+1. **Prerequisites**
+   - GitHub repository with the project code
+   - AWS credentials configured as GitHub Secrets:
+     * `AWS_ACCESS_KEY_ID`
+     * `AWS_SECRET_ACCESS_KEY`
+     * `AWS_REGION`
+
+2. **Automatic Trigger**
+   - The workflow runs automatically when code is pushed to the main branch
+   - No manual intervention required
+
+3. **Monitoring**
+   - View workflow progress in the "Actions" tab
+   - Check test results and deployment status
+   - View detailed logs for each step
+
+#### Workflow Security
+
+- AWS credentials are stored as GitHub Secrets
+- Tests run with mock credentials
+- Deployment only occurs after successful tests
+- Access to AWS resources is controlled by IAM roles
+
+###AWS Resources Created by Terraform Configuration
+=============================================
+
+S3 Resources:
+------------
+- Bucket: log-analysis-data-bucket
+- Bucket Ownership Controls: log-analysis-data-bucket
+- Bucket ACL: log-analysis-data-bucket (private)
+- Lifecycle Configuration: log-analysis-data-bucket (30-day expiration)
+
+RDS Resources:
+-------------
+- DB Instance: logs-db
+  * Instance Class: db.t3.micro (compatible with MySQL 8.0)
+  * Engine: MySQL 8.0
+  * Database Name: logs_database
+  * Publicly Accessible: Yes
+  * Storage: 20 GB gp2
+  * Backup Retention: 0 days (minimized)
+  * Multi-AZ: No (single AZ)
+  * Encryption: Disabled
+- DB Subnet Group: logs-db-subnet-group
+- Security Group: rds_security_group
+
+Secrets Manager:
+--------------
+- Secret: rds/logs-db-credentials
+- Secret Version: Contains DB credentials
+
+Glue Resources:
+-------------
+- Database: logs_catalog
+
+- Connection: rds-mysql-connection
+- Job: logs_etl_job
+  * Worker Type: G.1X
+  * Number of Workers: 5
+  * Timeout: 10 minutes
+  * Retries: 0
+  * Glue Version: 5.0
+- Security Group: glue_security_group
+- IAM Role: glue_etl_role
+- IAM Policy: glue_access_policy
+
+Lambda Resources:
+---------------
+- Function: logs_api_function
+  * Runtime: Python 3.9
+  * Handler: lambda_function.lambda_handler
+  * Memory: 128 MB (minimum)
+  * Timeout: 10 seconds
+  * Functionality: Query log counts by hour/day/week
+- Function: geo_data_enhancement_function
+  * Runtime: Python 3.9
+  * Handler: geo_data_enhancement.lambda_handler
+  * Memory: 256 MB
+  * Timeout: 60 seconds
+  * Functionality: Enrich logs with geolocation data
+- Security Group: lambda_security_group
+- IAM Role: logs_lambda_role
+- IAM Policy: lambda_access_policy
+
+API Gateway Resources:
+-------------------
+- REST API: logs_analysis_api
+- Resource: /logs
+- Method: GET
+- Integration: Lambda integration
+- Deployment: prod stage
+- API Key: logs_api_key
+- Usage Plan: basic_usage_plan
+  * Burst Limit: 10
+  * Rate Limit: 5
+
+VPC Resources:
+------------
+- Using Default VPC
+- Public Subnets (from Default VPC)
+- Private Subnets (2)
+- NAT Gateway
+- Route Tables
+- VPC Endpoints:
+  * S3 Gateway Endpoint
+
+EventBridge Resources:
+-------------------
+- Rule: glue-job-completion-rule
+- Target: geo_data_enhancement_function
+
+Note: All resources are created in eu-central-1 region 
