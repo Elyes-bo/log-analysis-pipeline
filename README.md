@@ -1,5 +1,7 @@
 # Log Analysis Pipeline
 
+![Architecture Overview](Architecture_overview.png)
+
 Hi team! I've just finished implementing our DNS log analysis project. This README will guide you through setting up and testing the solution I've built.
 
 ## What This Does
@@ -21,6 +23,7 @@ Collects DNS log files, processes them, stores the data in MySQL, enriches it wi
 
 - AWS CLI configured with proper access
 - Terraform installed (I used v1.5.0)
+- Terraform remote state access (Contact @Elyes for access)
 - Python 3.9
 - Git
 - PowerBi

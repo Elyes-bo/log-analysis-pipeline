@@ -203,7 +203,7 @@ resource "aws_security_group" "rds_sg" {
     from_port   = 3306
     to_port     = 3306
     protocol    = "tcp"
-    cidr_blocks = ["0.0.0.0/0"]  # Allow access from anywhere for testing
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
@@ -214,7 +214,7 @@ resource "aws_security_group" "rds_sg" {
   }
 }
 
-# Security group for Glue connection - With internet access
+# Security group for Glue connection
 resource "aws_security_group" "glue_sg" {
   name        = "glue_security_group"
   description = "Allow Glue to connect to resources"
@@ -224,14 +224,14 @@ resource "aws_security_group" "glue_sg" {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # Allow all inbound traffic
+    cidr_blocks = ["0.0.0.0/0"]
   }
 
   egress {
     from_port   = 0
     to_port     = 0
     protocol    = "-1"
-    cidr_blocks = ["0.0.0.0/0"] # Allow outbound to anywhere
+    cidr_blocks = ["0.0.0.0/0"]
   }
 }
 
@@ -245,14 +245,14 @@ resource "aws_db_subnet_group" "logs_db_subnet" {
   }
 }
 
-# RDS MySQL instance - Publicly accessible
+# RDS MySQL instance
 resource "aws_db_instance" "logs_db" {
   identifier             = "logs-db"
   allocated_storage      = 20
   storage_type           = "gp2"
   engine                 = "mysql"
   engine_version         = "8.0"
-  instance_class         = "db.t3.micro"  # Compatible with MySQL 8.0
+  instance_class         = "db.t3.micro"
   db_name                = "logs_database"
   username               = var.db_username
   password               = var.db_password
@@ -261,9 +261,9 @@ resource "aws_db_instance" "logs_db" {
   vpc_security_group_ids = [aws_security_group.rds_sg.id]
   db_subnet_group_name   = aws_db_subnet_group.logs_db_subnet.name
   publicly_accessible    = true
-  backup_retention_period = 0  # Minimize backup storage
-  multi_az               = false  # Single AZ to minimize costs
-  storage_encrypted      = false  # Disable encryption to reduce costs
+  backup_retention_period = 0
+  multi_az               = false
+  storage_encrypted      = false
 }
 
 # Glue Database and Table
@@ -332,13 +332,13 @@ resource "aws_glue_connection" "rds_connection" {
   }
 
   physical_connection_requirements {
-    availability_zone      = data.aws_subnet.public_subnet.availability_zone  # Get AZ from subnet
+    availability_zone      = data.aws_subnet.public_subnet.availability_zone
     security_group_id_list = [aws_security_group.glue_sg.id]
-    subnet_id              = data.aws_subnets.public.ids[0]  # Use the first public subnet
+    subnet_id              = data.aws_subnets.public.ids[0]
   }
 }
 
-# Glue ETL Job - Minimized configuration
+# Glue ETL Job
 resource "aws_glue_job" "logs_etl" {
   name     = "logs_etl_job"
   role_arn = aws_iam_role.glue_role.arn
@@ -359,11 +359,11 @@ resource "aws_glue_job" "logs_etl" {
     "--S3_INPUT_PATH"            = "s3://${aws_s3_bucket.log_data.bucket}/raw/dns_log_file.txt"
   }
 
-  max_retries      = 0  # No retries to minimize costs
-  timeout          = 10  # Reduced timeout
-  glue_version     = "5.0" # Updated to Glue 5.0 for better performance
-  worker_type      = "G.1X"  # Use G.1X worker type (1 DPU per worker)
-  number_of_workers = 5  # Use 5 workers (5 DPU total)
+  max_retries      = 0
+  timeout          = 10
+  glue_version     = "5.0"
+  worker_type      = "G.1X"
+  number_of_workers = 5
   
   security_configuration = aws_glue_security_configuration.glue_security_config.name
 }
@@ -462,14 +462,14 @@ resource "aws_security_group" "lambda_sg" {
   }
 }
 
-# Lambda function - Free tier configuration
+# Lambda function
 resource "aws_lambda_function" "logs_api" {
   function_name = "logs_api_function"
   role          = aws_iam_role.lambda_role.arn
   handler       = "lambda_function.lambda_handler"
   runtime       = "python3.9"
   timeout       = 10
-  memory_size   = 128  # Minimum memory size
+  memory_size   = 128
 
   filename      = "lambda_deployment.zip" 
   source_code_hash = filebase64sha256("lambda_deployment.zip")
@@ -484,19 +484,19 @@ resource "aws_lambda_function" "logs_api" {
   }
 
   vpc_config {
-    subnet_ids         = [data.aws_subnets.public.ids[0]]  # Use first public subnet for internet access
+    subnet_ids         = [data.aws_subnets.public.ids[0]]
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
 }
 
-# Update Geo Data Enhancement Lambda function to use private subnets with NAT Gateway access
+# Geo Data Enhancement Lambda function
 resource "aws_lambda_function" "geo_data_enhancement" {
   function_name = "geo_data_enhancement_function"
   role          = aws_iam_role.lambda_role.arn
   handler       = "geo_data_enhancement.lambda_handler"
   runtime       = "python3.9"
-  timeout       = 60  # Increased timeout for geo data processing
-  memory_size   = 256  # Increased memory for better performance
+  timeout       = 60
+  memory_size   = 256
 
   filename      = "lambda_function2.zip" 
   source_code_hash = filebase64sha256("lambda_function2.zip")
@@ -511,7 +511,7 @@ resource "aws_lambda_function" "geo_data_enhancement" {
   }
 
   vpc_config {
-    subnet_ids         = aws_subnet.private[*].id  # Use private subnets with NAT Gateway access
+    subnet_ids         = aws_subnet.private[*].id
     security_group_ids = [aws_security_group.lambda_sg.id]
   }
 }
@@ -566,7 +566,7 @@ resource "aws_api_gateway_resource" "logs" {
   path_part   = "logs"
 }
 
-# API Gateway method (GET with API key required)
+# API Gateway method
 resource "aws_api_gateway_method" "logs_get" {
   rest_api_id      = aws_api_gateway_rest_api.logs_api.id
   resource_id      = aws_api_gateway_resource.logs.id
@@ -575,7 +575,7 @@ resource "aws_api_gateway_method" "logs_get" {
   api_key_required = true
 
   request_parameters = {
-    "method.request.querystring.interval" = false  # Optional parameter
+    "method.request.querystring.interval" = false
   }
 }
 
@@ -624,7 +624,7 @@ resource "aws_api_gateway_integration" "lambda_integration" {
   integration_http_method = "POST"
   type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.logs_api.invoke_arn
-  credentials             = aws_iam_role.api_gateway_role.arn  # Use the API Gateway role
+  credentials             = aws_iam_role.api_gateway_role.arn
 }
 
 # API Gateway method response
@@ -683,9 +683,6 @@ resource "aws_lambda_permission" "apigw" {
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.logs_api.function_name
   principal     = "apigateway.amazonaws.com"
-
-  # The /*/* portion grants access from any method on any resource
-  # within the specified API Gateway
   source_arn = "${aws_api_gateway_rest_api.logs_api.execution_arn}/*/*"
 }
 
@@ -725,7 +722,7 @@ output "glue_connection_name" {
   value = aws_glue_connection.rds_connection.name
 }
 
-# S3 bucket lifecycle rule to minimize storage costs
+# S3 bucket lifecycle rule
 resource "aws_s3_bucket_lifecycle_configuration" "log_data" {
   bucket = aws_s3_bucket.log_data.id
 
@@ -734,7 +731,7 @@ resource "aws_s3_bucket_lifecycle_configuration" "log_data" {
     status = "Enabled"
 
     expiration {
-      days = 30  # Delete objects after 30 days
+      days = 30
     }
   }
 }
@@ -764,7 +761,7 @@ data "aws_availability_zones" "available" {
 resource "aws_subnet" "private" {
   count             = 2
   vpc_id            = data.aws_vpc.default.id
-  cidr_block        = "172.31.${160 + (count.index * 16)}.0/20"   # Using valid CIDR blocks for private subnets
+  cidr_block        = "172.31.${160 + (count.index * 16)}.0/20"
   availability_zone = data.aws_availability_zones.available.names[count.index]
 
   tags = {
@@ -778,10 +775,10 @@ resource "aws_eip" "nat" {
   domain = "vpc"
 }
 
-# Create NAT Gateway in a public subnet
+# Create NAT Gateway
 resource "aws_nat_gateway" "nat" {
   allocation_id = aws_eip.nat.id
-  subnet_id     = slice(data.aws_subnets.public.ids, 0, 1)[0]  # Use first public subnet
+  subnet_id     = slice(data.aws_subnets.public.ids, 0, 1)[0]
 
   tags = {
     Name = "Log Analysis NAT Gateway"
