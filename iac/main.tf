@@ -98,6 +98,7 @@ resource "aws_secretsmanager_secret_version" "rds_credentials" {
 # Get the current secret version from Secrets Manager
 data "aws_secretsmanager_secret_version" "current" {
   secret_id = aws_secretsmanager_secret.rds_credentials.id
+  depends_on = [aws_secretsmanager_secret_version.rds_credentials]
 }
 
 # IAM role for Glue
@@ -315,6 +316,11 @@ resource "aws_glue_catalog_table" "logs_table" {
   }
 }
 
+# Get subnet details
+data "aws_subnet" "public_subnet" {
+  id = data.aws_subnets.public.ids[0]
+}
+
 # Glue Connection to RDS
 resource "aws_glue_connection" "rds_connection" {
   name = "rds-mysql-connection"
@@ -326,18 +332,10 @@ resource "aws_glue_connection" "rds_connection" {
   }
 
   physical_connection_requirements {
-    availability_zone      = aws_db_instance.logs_db.availability_zone
+    availability_zone      = data.aws_subnet.public_subnet.availability_zone  # Get AZ from subnet
     security_group_id_list = [aws_security_group.glue_sg.id]
-    subnet_id              = length(data.aws_subnets.private.ids) > 0 ? data.aws_subnets.private.ids[0] : slice(data.aws_subnets.public.ids, 0, 1)[0]
+    subnet_id              = data.aws_subnets.public.ids[0]  # Use the first public subnet
   }
-}
-
-# Upload the requests package to S3
-resource "aws_s3_object" "requests_package" {
-  bucket = aws_s3_bucket.log_data.id
-  key    = "packages/requests_package.zip"
-  source = "${path.module}/requests_package.zip"
-  etag   = filemd5("${path.module}/requests_package.zip")
 }
 
 # Glue ETL Job - Minimized configuration
@@ -562,82 +560,93 @@ resource "aws_api_gateway_rest_api" "logs_api" {
 }
 
 # API Gateway resource
-resource "aws_api_gateway_resource" "logs_resource" {
+resource "aws_api_gateway_resource" "logs" {
   rest_api_id = aws_api_gateway_rest_api.logs_api.id
   parent_id   = aws_api_gateway_rest_api.logs_api.root_resource_id
   path_part   = "logs"
 }
 
-# API Gateway method
-resource "aws_api_gateway_method" "logs_method" {
-  rest_api_id   = aws_api_gateway_rest_api.logs_api.id
-  resource_id   = aws_api_gateway_resource.logs_resource.id
-  http_method   = "GET"
-  authorization = "NONE"
+# API Gateway method (GET with API key required)
+resource "aws_api_gateway_method" "logs_get" {
+  rest_api_id      = aws_api_gateway_rest_api.logs_api.id
+  resource_id      = aws_api_gateway_resource.logs.id
+  http_method      = "GET"
+  authorization    = "NONE"
   api_key_required = true
+
+  request_parameters = {
+    "method.request.querystring.interval" = false  # Optional parameter
+  }
 }
 
-# API Gateway integration
-resource "aws_api_gateway_integration" "logs_integration" {
+# API Gateway execution role
+resource "aws_iam_role" "api_gateway_role" {
+  name = "api_gateway_execution_role"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = "sts:AssumeRole"
+        Effect = "Allow"
+        Principal = {
+          Service = "apigateway.amazonaws.com"
+        }
+      }
+    ]
+  })
+}
+
+# Policy to allow API Gateway to invoke Lambda
+resource "aws_iam_role_policy" "api_gateway_lambda_policy" {
+  name = "api_gateway_lambda_policy"
+  role = aws_iam_role.api_gateway_role.id
+
+  policy = jsonencode({
+    Version = "2012-10-17"
+    Statement = [
+      {
+        Action = [
+          "lambda:InvokeFunction"
+        ]
+        Effect   = "Allow"
+        Resource = aws_lambda_function.logs_api.arn
+      }
+    ]
+  })
+}
+
+# API Gateway integration with Lambda
+resource "aws_api_gateway_integration" "lambda_integration" {
   rest_api_id             = aws_api_gateway_rest_api.logs_api.id
-  resource_id             = aws_api_gateway_resource.logs_resource.id
-  http_method             = aws_api_gateway_method.logs_method.http_method
+  resource_id             = aws_api_gateway_resource.logs.id
+  http_method             = aws_api_gateway_method.logs_get.http_method
   integration_http_method = "POST"
-  type                    = "AWS"  # Changed from AWS_PROXY to AWS for non-proxy integration
+  type                    = "AWS_PROXY"
   uri                     = aws_lambda_function.logs_api.invoke_arn
-
-  request_templates = {
-    "application/json" = <<EOF
-{
-  "queryStringParameters": {
-    "interval": "$input.params('interval')"
-  }
-}
-EOF
-  }
+  credentials             = aws_iam_role.api_gateway_role.arn  # Use the API Gateway role
 }
 
 # API Gateway method response
-resource "aws_api_gateway_method_response" "logs_method_response" {
+resource "aws_api_gateway_method_response" "response_200" {
   rest_api_id = aws_api_gateway_rest_api.logs_api.id
-  resource_id = aws_api_gateway_resource.logs_resource.id
-  http_method = aws_api_gateway_method.logs_method.http_method
+  resource_id = aws_api_gateway_resource.logs.id
+  http_method = aws_api_gateway_method.logs_get.http_method
   status_code = "200"
-  
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin" = true
-  }
-}
 
-# API Gateway integration response
-resource "aws_api_gateway_integration_response" "logs_integration_response" {
-  rest_api_id = aws_api_gateway_rest_api.logs_api.id
-  resource_id = aws_api_gateway_resource.logs_resource.id
-  http_method = aws_api_gateway_method.logs_method.http_method
-  status_code = aws_api_gateway_method_response.logs_method_response.status_code
-  
-  response_parameters = {
-    "method.response.header.Access-Control-Allow-Origin" = "'*'"
-  }
-
-  response_templates = {
-    "application/json" = <<EOF
-#set($inputRoot = $input.path('$'))
-$inputRoot
-EOF
+  response_models = {
+    "application/json" = "Empty"
   }
 }
 
 # API Gateway deployment
-resource "aws_api_gateway_deployment" "logs_deployment" {
-  depends_on = [aws_api_gateway_integration.logs_integration]
+resource "aws_api_gateway_deployment" "deployment" {
+  depends_on = [
+    aws_api_gateway_integration.lambda_integration,
+  ]
 
   rest_api_id = aws_api_gateway_rest_api.logs_api.id
   stage_name  = "prod"
-
-  lifecycle {
-    create_before_destroy = true
-  }
 }
 
 # API Key for Basic Auth
@@ -646,30 +655,49 @@ resource "aws_api_gateway_api_key" "logs_api_key" {
 }
 
 # Usage plan for API key
-resource "aws_api_gateway_usage_plan" "logs_usage_plan" {
-  name         = "logs_usage_plan"
-  description  = "Usage plan for logs API"
-  
+resource "aws_api_gateway_usage_plan" "basic" {
+  name         = "basic_usage_plan"
+  description  = "Basic usage plan for logs API"
+
   api_stages {
     api_id = aws_api_gateway_rest_api.logs_api.id
-    stage  = aws_api_gateway_deployment.logs_deployment.stage_name
+    stage  = aws_api_gateway_deployment.deployment.stage_name
+  }
+
+  throttle_settings {
+    burst_limit = 10
+    rate_limit  = 5
   }
 }
 
 # Connect API key to usage plan
-resource "aws_api_gateway_usage_plan_key" "logs_usage_plan_key" {
+resource "aws_api_gateway_usage_plan_key" "main" {
   key_id        = aws_api_gateway_api_key.logs_api_key.id
   key_type      = "API_KEY"
-  usage_plan_id = aws_api_gateway_usage_plan.logs_usage_plan.id
+  usage_plan_id = aws_api_gateway_usage_plan.basic.id
 }
 
 # Lambda permission for API Gateway
-resource "aws_lambda_permission" "apigw_lambda" {
-  statement_id  = "AllowExecutionFromAPIGateway"
+resource "aws_lambda_permission" "apigw" {
+  statement_id  = "AllowAPIGatewayInvoke"
   action        = "lambda:InvokeFunction"
   function_name = aws_lambda_function.logs_api.function_name
   principal     = "apigateway.amazonaws.com"
-  source_arn    = "${aws_api_gateway_rest_api.logs_api.execution_arn}/*/${aws_api_gateway_method.logs_method.http_method}${aws_api_gateway_resource.logs_resource.path}"
+
+  # The /*/* portion grants access from any method on any resource
+  # within the specified API Gateway
+  source_arn = "${aws_api_gateway_rest_api.logs_api.execution_arn}/*/*"
+}
+
+# Output the API endpoint and key
+output "api_endpoint" {
+  value = "${aws_api_gateway_deployment.deployment.invoke_url}/logs"
+}
+
+output "api_key" {
+  value       = aws_api_gateway_api_key.logs_api_key.value
+  sensitive   = true
+  description = "API Key for Basic Authentication"
 }
 
 # Outputs
@@ -679,15 +707,6 @@ output "s3_bucket_name" {
 
 output "rds_endpoint" {
   value = aws_db_instance.logs_db.endpoint
-}
-
-output "api_gateway_url" {
-  value = "${aws_api_gateway_deployment.logs_deployment.invoke_url}/${aws_api_gateway_resource.logs_resource.path_part}"
-}
-
-output "api_key" {
-  value     = aws_api_gateway_api_key.logs_api_key.value
-  sensitive = true
 }
 
 output "lambda_function_name" {
