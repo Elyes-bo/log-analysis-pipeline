@@ -8,7 +8,6 @@ iac/*.tfvars.json
 local
 /local
 # Zip files
-*.zip
 
 # IDE and editor files
 .idea/
