@@ -53,4 +53,4 @@ jobs:
     
     - name: Update Lambda function
       run: |
-        aws lambda update-function-code --function-name log-api --zip-file fileb://lambda_deployment.zip
+        aws lambda update-function-code --function-name logs_api_function --zip-file fileb://lambda_deployment.zip
