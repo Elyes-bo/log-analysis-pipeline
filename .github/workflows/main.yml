@@ -51,14 +51,6 @@ jobs:
         aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS }}
         aws-region: ${{ secrets.AWS_REGION }}
     
-    - name: Build deployment package
-      run: |
-        mkdir -p package
-        pip install -t package pymysql
-        cd package
-        zip -r ../lambda_deployment.zip .
-        cd ..
-        zip -g lambda_deployment.zip lambda_function.py
     - name: Update Lambda function
       run: |
         aws lambda update-function-code --function-name log-api --zip-file fileb://lambda_deployment.zip
