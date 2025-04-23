@@ -23,14 +23,22 @@ def connect_to_db():
         return None
 
 def lambda_handler(event, context):
+    print(f"Event received: {json.dumps(event)}")
+    
     # Get the interval parameter (hourly, daily, weekly)
-    interval = event.get('queryStringParameters', {}).get('interval', 'daily')
+    # For Lambda proxy integration, queryStringParameters might be None
+    query_params = event.get('queryStringParameters', {}) or {}
+    interval = query_params.get('interval', 'daily')
     
     # Connect to the database
     conn = connect_to_db()
     if not conn:
         return {
             'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             'body': json.dumps({'error': 'Failed to connect to database'})
         }
     
@@ -87,16 +95,30 @@ def lambda_handler(event, context):
                         'count': row[1]
                     })
             
-            # Return results
-            return interval, formatted_results
-
+            # Return results with proper Lambda proxy integration format
+            return {
+                'statusCode': 200,
+                'headers': {
+                    'Content-Type': 'application/json',
+                    'Access-Control-Allow-Origin': '*'
+                },
+                'body': json.dumps({
+                    'interval': interval,
+                    'results': formatted_results
+                })
+            }
     
     except Exception as e:
         print(f"Error executing query: {e}")
         return {
             'statusCode': 500,
+            'headers': {
+                'Content-Type': 'application/json',
+                'Access-Control-Allow-Origin': '*'
+            },
             'body': json.dumps({'error': f'Error executing query: {str(e)}'})
         }
     
     finally:
-        conn.close()
+        if conn:
+            conn.close()
